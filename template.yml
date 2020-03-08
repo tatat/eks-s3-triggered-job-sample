@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Transform: 'AWS::Serverless-2016-10-31'
+
+Parameters:
+  LayerArn:
+    Type: String
+
+  DockerImage:
+    Type: String
+
+  EcrSecretName:
+    Type: String
+
+  ObjectSuffix:
+    Type: String
+
+  DeploymentBucket:
+    Type: String
+
+  DataBucketName:
+    Type: String
+
+Globals:
+  Function:
+    Timeout: 60
+
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref DataBucketName
+
+  HandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: handler/
+      Handler: handler
+      Runtime: provided
+      Layers:
+        - !Ref LayerArn
+      Events:
+        Handler:
+          Type: S3
+          Properties:
+            Bucket: !Ref S3Bucket
+            Events:
+              - s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: !Ref ObjectSuffix
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref DeploymentBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ec2:DescribeInstances
+                - ec2:DescribeTags
+                - eks:DescribeCluster
+              Resource: '*'
+      Environment:
+        Variables:
+          CLUSTER_NAME: !Sub '${AWS::StackName}-cluster'
+          DOCKER_IMAGE: !Ref DockerImage
+          ECR_SECRET_NAME: !Ref EcrSecretName
+
+  S3BucketPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:ListBucket
+            - s3:GetBucketLocation
+            - s3:GetObjectVersion
+            - s3:PutObject
+            - s3:PutObjectAcl
+            - s3:GetLifecycleConfiguration
+            - s3:PutLifecycleConfiguration
+            - s3:DeleteObject
+          Resource:
+            - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}'
+            - !Sub 'arn:${AWS::Partition}:s3:::${S3Bucket}/*'
+
+Outputs:
+  HandlerFunction:
+    Value: !GetAtt HandlerFunction.Arn
+
+  HandlerFunctionIamRole:
+    Value: !GetAtt HandlerFunctionRole.Arn
+
+  S3Bucket:
+    Value: !Ref S3Bucket
+
+  S3BucketPolicy:
+    Value: !Ref S3BucketPolicy

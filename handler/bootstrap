@@ -1,0 +1,35 @@
+#!/bin/sh
+
+set -euo pipefail
+
+export PATH=$PATH:/opt/awscli:/opt/kubectl:/opt/helm
+export KUBECONFIG=/tmp/kubeconfig
+
+if [ -z ${CLUSTER_NAME:-} ]; then
+    echo "missing CLUSTER_NAME in lambda environment variables - using 'default' as the CLUSTER_NAME"
+fi
+
+CLUSTER_NAME=${CLUSTER_NAME-default}
+
+
+update_kubeconfig(){
+    aws eks update-kubeconfig --name "$1" --kubeconfig /tmp/kubeconfig
+}
+
+update_kubeconfig "$CLUSTER_NAME" && \
+  echo "CLUSTER_NAME=${CLUSTER_NAME}" > /tmp/.env.config || echo "update_kubeconfig failed"
+
+
+while true
+do
+  HEADERS="$(mktemp)"
+  EVENT_DATA=$(curl -sS -LD "$HEADERS" -X GET "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/next")
+  REQUEST_ID=$(grep -Fi Lambda-Runtime-Aws-Request-Id "$HEADERS" | tr -d '[:space:]' | cut -d: -f2)
+  RESPONSE=$(./$(echo "$_HANDLER" | cut -d. -f2).sh "$EVENT_DATA")
+
+  echo "=========[RESPONSE]======="
+  echo "$RESPONSE"
+  echo "=========[/RESPONSE]======="
+
+  curl -X POST "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/$REQUEST_ID/response"  -d "$RESPONSE"
+done

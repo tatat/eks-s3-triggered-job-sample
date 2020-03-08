@@ -1,0 +1,5 @@
+export AWS_PROFILE=
+export OBJECT_SUFFIX=sample.txt
+export DEPLOYMENT_BUCKET=
+export DATA_BUCKET_NAME=
+export STACK_NAME=
